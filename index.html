@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LINE 貼圖提示詞產生器（4x4 十六宮格）</title>
+<style>
+:root{--bg:#f6f4ff;--card:#fff;--ink:#231b3a;--mut:#6b6485;--line:#ddd8f0;--acc:#6d4aff;--accink:#fff;--warn:#8a4b00;--warnbg:#fff1d6}
+@media(prefers-color-scheme:dark){:root{--bg:#171326;--card:#221c36;--ink:#f1eefc;--mut:#a9a2c4;--line:#3a3258;--acc:#9d85ff;--accink:#171326;--warn:#ffd28a;--warnbg:#3b2f14}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif}
+main{max-width:980px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:26px;margin:8px 0 4px;letter-spacing:.02em}
+.sub{color:var(--mut);margin:0 0 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+h2{font-size:16px;margin:0 0 12px}
+.row{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+label,.lb{display:block;font-size:13px;color:var(--mut);margin-bottom:4px}
+select,input[type=text],textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px}
+textarea{min-height:230px;font-size:13px;line-height:1.55;resize:vertical}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1px solid var(--acc);background:transparent;color:var(--acc);padding:7px 14px}
+button.p{background:var(--acc);color:var(--accink)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;align-items:center}
+.opts{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.opts label{display:inline-flex;gap:5px;align-items:center;margin:0;color:var(--ink);font-size:14px}
+input[type=color]{width:38px;height:30px;padding:0;border:1px solid var(--line);border-radius:6px;background:none}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.cell{position:relative;border-radius:10px;border:2px solid var(--c);background:color-mix(in srgb,var(--c) 14%,var(--card));padding:18px 6px 6px}
+.cell b{position:absolute;top:2px;left:7px;font-size:11px;color:var(--mut)}
+.cell input{text-align:center;font-weight:700;font-size:16px;padding:6px 2px;background:var(--card)}
+.cell.long input{border-color:#e08a00}
+.warn{background:var(--warnbg);color:var(--warn);border-radius:10px;padding:8px 12px;margin:0 0 14px;font-size:14px}
+.warn:empty{display:none}
+.hint{font-size:13px;color:var(--mut);margin:8px 0 0}
+@media(max-width:520px){.grid{gap:5px}.cell input{font-size:14px}}
+</style>
+</head>
+<body>
+<main>
+<h1>LINE 貼圖提示詞產生器</h1>
+<p class="sub">設定文字、風格、語氣與背景，產生一段能讓繪圖 AI 一次畫出 4x4 十六格貼圖的提示詞。</p>
+
+<div class="card">
+<h2>1. 文字內容（16 格）</h2>
+<div class="row" style="margin-bottom:12px">
+<div><label for="tone">語氣（會換掉預設短語，也影響表情）</label><select id="tone"></select></div>
+<div style="display:flex;align-items:flex-end"><button id="load" type="button">載入此語氣的預設短語</button></div>
+</div>
+<div class="grid" id="grid"></div>
+<p class="hint">每格可自行修改，切換語氣時不會蓋掉你改過的格子（會先詢問）。超過 6 字的格子會以橘框提醒，字太多在小格裡不易辨識。</p>
+</div>
+
+<div class="card">
+<h2>2. 文字風格</h2>
+<div class="row">
+<div><label for="style">風格（共 25 種）</label><select id="style"></select></div>
+<div style="display:flex;align-items:flex-end"><button id="rnd" type="button">隨機風格</button></div>
+</div>
+<div class="bar" style="margin-top:14px"><label style="margin:0;color:var(--ink)"><input type="checkbox" id="ap"> 生物擬人化（筆畫由生物身體構成）</label></div>
+<div class="row" id="apbox" style="margin-top:10px;display:none">
+<div><label for="cr">生物</label><select id="cr"></select></div>
+<div id="crcw" style="display:none"><label for="crc">自訂生物（例如：水豚、柴犬、無尾熊）</label><input type="text" id="crc" placeholder="輸入生物名稱"></div>
+</div>
+</div>
+
+<div class="card">
+<h2>3. 背景與提示詞語言</h2>
+<div class="opts" id="bgopts">
+<label><input type="radio" name="bg" value="綠" checked> 純綠</label>
+<label><input type="radio" name="bg" value="白"> 純白</label>
+<label><input type="radio" name="bg" value="透明"> 透明</label>
+<label><input type="radio" name="bg" value="自訂"> 自訂 <input type="color" id="bgc" value="#ffe4f1"></label>
+</div>
+<p class="hint">繪圖 AI 多半無法輸出真正的透明，選「透明」時會改用純綠（風格含綠色時用純白），請自行去背。</p>
+<div class="row" style="margin-top:12px"><div><label for="lang">提示詞語言</label><select id="lang"><option value="en">英文（預設）</option><option value="zh">中文</option></select></div></div>
+</div>
+
+<div class="warn" id="warn"></div>
+
+<div class="card">
+<h2>4. 完整 4x4 提示詞</h2>
+<textarea id="out" readonly></textarea>
+<div class="bar"><button class="p" type="button" data-cp="out">複製提示詞</button></div>
+</div>
+
+<div class="card">
+<h2>5. 單格重生提示詞</h2>
+<p class="hint" style="margin-top:0">某一格寫錯字或風格跑掉時，只重畫那一格，沿用同一組風格設定。</p>
+<div class="row" style="margin-top:10px"><div><label for="rc">要重做的格子</label><select id="rc"></select></div></div>
+<textarea id="out2" readonly style="min-height:170px;margin-top:10px"></textarea>
+<div class="bar"><button class="p" type="button" data-cp="out2">複製單格提示詞</button></div>
+</div>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+// [名稱, 英文描述, 中文描述, 含綠色]
+const ST=[
+["衝浪熱帶字","painterly ocean-wave lettering: strokes formed by curling turquoise and blue waves with white foam, splashing droplets and warm orange-yellow sunset highlights","浪花捲成筆畫，青藍色海浪、白色泡沫、水花與橘黃夕陽光",1],
+["蠟筆童書字","children's picture-book crayon lettering: thick wax-crayon strokes in rainbow colors, visible waxy texture, hand-drawn rounded ends","童書蠟筆字，粗蠟筆彩虹筆觸、蠟質紋理、手繪圓角",1],
+["氣球派對字","glossy inflated foil-balloon letters in pink, gold, blue, purple and green, puffy shapes with reflections and crimped edges","亮面鋁箔氣球字，粉、金、藍、紫、綠，鼓脹有反光與壓邊",1],
+["水彩暈染字","watercolor-bleed brush lettering with soft color gradients, wet edges, pigment blooms and tiny paint splatters","水彩暈染筆刷字，柔和漸層、濕邊、顏料暈開與小墨點",0],
+["抽象藝術字","abstract art lettering assembled from flat geometric color blocks in teal, orange, red, yellow, navy and mauve, strokes cut into overlapping rectangles","抽象藝術字，由青、橘、紅、黃、藏青、紫的平面色塊與重疊矩形拼成",0],
+["黏土捏塑字","hand-sculpted clay letters with fingerprint dents, soft rounded edges and slightly wobbly shapes","手捏黏土質感，有指紋壓痕、圓潤邊緣、微微歪斜",0],
+["毛氈羊毛字","needle-felted wool letters with fuzzy fibers and visible stitched texture","羊毛氈戳戳質感，毛茸茸並帶針腳",0],
+["果凍Q彈字","translucent jelly letters, glossy and bouncy, with inner light and tiny bubbles","半透明果凍字，Q彈有光澤、內有氣泡與透光",0],
+["餅乾糖霜字","gingerbread cookie letters decorated with piped royal icing and colorful sprinkles","薑餅餅乾字，加糖霜擠花與彩色糖珠",0],
+["毛線針織字","knitted yarn letters with visible knit stitches like a sweater pattern","毛線編織字，有明顯針織紋理，像毛衣圖案",0],
+["霓虹燈管字","glowing neon tube letters with bright halo, night-market sign feel","發光霓虹燈管字，有亮暈，夜市招牌感",0],
+["貼紙剪紙字","die-cut sticker paper-collage letters with a thick white border and layered paper pieces","貼紙剪紙拼貼字，厚白邊、紙片層次分明",0],
+["積木像素字","toy-brick or 8-bit pixel letters built from square blocks","積木或 8-bit 像素方塊組成的字",0],
+["雲朵棉花糖字","fluffy cloud and cotton-candy letters in soft pastel sky colors","軟綿綿雲朵與棉花糖字，粉彩天空色",0],
+["火焰熔岩字","fiery lava letters with flowing magma, flames and glowing embers","火焰與熔岩流動的字，帶發光餘燼",0],
+["冰晶雪花字","frosted ice-crystal letters with snowflakes and sparkling frost","冰霜結晶與雪花組成的字，閃亮透冷",0],
+["花草藤蔓字","letters grown from flowers, leaves and vines","由花朵、葉子與藤蔓長成的字",1],
+["星空銀河字","letters filled with a starry galaxy nebula and scattered stars","筆畫內是星雲銀河與點點星星",0],
+["復古漫畫字","retro pop-art comic letters with halftone dots, thick black outlines and burst shapes","復古波普漫畫字，網點、粗黑邊、爆炸框",0],
+["刺繡布料字","embroidered fabric letters with satin stitches and cloth texture","刺繡縫線與布面質感的字",0],
+["塗鴉噴漆字","street graffiti spray-paint letters with drips and bold outlines","街頭塗鴉噴漆字，有滴漆與粗描邊",0],
+["摺紙字","origami folded-paper letters with crisp creases and 3D folds","摺紙字，明顯折痕與立體摺疊",0],
+["金屬鍍鉻字","polished chrome metal letters with mirror reflections and 3D bevel","鍍鉻金屬字，鏡面反光與立體斜角",0],
+["珍珠奶茶字","bubble-tea themed letters with tapioca pearls, milk-tea colors and straws","珍珠奶茶主題字，有珍珠、奶茶色與吸管",0],
+["水墨書法字","Chinese ink-brush calligraphy letters with ink gradations and white space","毛筆水墨書法字，濃淡層次與留白",0]
+];
+// 名稱 -> [英文心情, 中文心情, 16 句預設]
+const TN={
+"不指定":["","","早安、晚安、謝謝、好的、OK、收到、辛苦了、加油、哈哈哈、太棒了、愛你、好累、對不起、傻眼、等一下、掰掰"],
+"可愛療癒":["cute and healing: round, shy, sparkly, with little hearts","可愛療癒：圓潤、害羞、愛心與閃亮","早安呀、晚安喔、謝謝你、好的呀、愛你喔、抱抱、辛苦啦、加油喔、好開心、親親、摸摸頭、想你了、對不起嘛、等我喔、好睏喔、掰掰囉"],
+"搞笑誇張":["funny and exaggerated: over-the-top expressions, shaking lines, explosive energy","搞笑誇張：誇張表情、震動線、爆炸感","笑死、傻眼、崩潰、我不要、真的假的、太扯了、別鬧了、救命啊、我裂開、好餓好餓、不想動、有事嗎、嚇死我、沒在怕、衝啊、拜託啦"],
+"日常實用":["everyday and simple: clean, minimal expressions and poses","日常實用：簡潔、表情與動作單純","早安、晚安、謝謝、好的、OK、收到、等一下、到了、出發、在忙、馬上回、沒問題、不用了、再說、辛苦了、掰掰"],
+"職場上班":["office-worker vibe: tired but polite, work-life energy","職場上班：疲憊但有禮貌的上班族氛圍","收到、辛苦了、麻煩你了、已確認、開會中、我看看、馬上處理、下班了、加班中、請稍等、感謝協助、沒問題、再確認、不好意思、了解、週五萬歲"],
+"閨蜜朋友":["playful best-friend vibe: cheeky, raised eyebrows, teasing","閨蜜朋友：俏皮、挑眉、調侃","真的假的、超扯、快回我、約嗎、笑死、我懂、太誇張、好想你、救我、不要啦、等我、揪團、吃什麼、晚點聊、愛你喔、辛苦了"],
+"長輩圖風":["elder-greeting-card vibe: warm blessings and sunshine glow","長輩圖風：溫暖祝福、陽光光暈","早安、午安、晚安、平安喜樂、吉祥如意、身體健康、萬事如意、恭喜發財、福氣滿滿、保重身體、天天開心、心想事成、謝謝你、祝福你、平安順心、早睡早起"]
+};
+for(const k in TN)TN[k][2]=TN[k][2].split("、");
+const CR={
+"貓咪":["a cat (ears, tail, paw pads, curled body)","貓咪（耳朵、尾巴、肉球、蜷曲的身體）",0],
+"狗狗":["a dog (floppy ears, wagging tail, lying or rolling body)","狗狗（垂耳、搖擺的尾巴、趴著或翻滾的身體）",0],
+"水中生物":["sea creatures (fish, octopus tentacles, dolphins)","水中生物（魚、章魚觸手、海豚）",0],
+"小鳥／企鵝":["round little birds and penguins","圓滾滾的小鳥與企鵝",0],
+"恐龍":["a cute cartoon dinosaur (back spikes, tail)","可愛卡通恐龍（背刺、尾巴）",1],
+"植物精靈":["plant spirits (cactus, mushroom, succulent) with tiny faces, arms and legs","植物精靈（仙人掌、蘑菇、多肉）有小臉與手腳",1]
+};
+let cells=TN["不指定"][2].slice(), preset=cells.slice();
+const COL=["#6d4aff","#ff5fa2","#16b8a6","#f5a400"];
+
+function fill(sel,arr){sel.innerHTML=arr.map((t,i)=>`<option value="${i}">${t}</option>`).join("")}
+fill($("style"),ST.map(s=>s[0]));
+$("tone").innerHTML=Object.keys(TN).map(k=>`<option>${k}</option>`).join("");
+$("cr").innerHTML=Object.keys(CR).concat("自訂").map(k=>`<option>${k}</option>`).join("");
+$("rc").innerHTML=Array.from({length:16},(_,i)=>`<option value="${i}">第 ${i+1} 格</option>`).join("");
+
+function grid(){
+  $("grid").innerHTML="";
+  cells.forEach((c,i)=>{
+    const d=document.createElement("div");d.className="cell";d.style.setProperty("--c",COL[(i%4+Math.floor(i/4))%4]);
+    d.innerHTML=`<b>${i+1}</b><input type="text" aria-label="第 ${i+1} 格文字">`;
+    const inp=d.querySelector("input");inp.value=c;
+    const chk=()=>d.classList.toggle("long",[...inp.value].length>6);chk();
+    inp.oninput=()=>{cells[i]=inp.value;chk();render()};
+    $("grid").appendChild(d);
+  });
+}
+const crInfo=()=>{
+  if(!$("ap").checked)return null;
+  const v=$("cr").value;
+  if(v==="自訂"){const t=$("crc").value.trim();return{e:t||"a creature",z:t||"某種生物",g:0,empty:!t}}
+  return{e:CR[v][0],z:CR[v][1],g:CR[v][2]};
+};
+function bgInfo(){
+  const v=document.querySelector("input[name=bg]:checked").value,s=ST[$("style").value],c=crInfo();
+  const conf=!!(s[3]||(c&&c.g));
+  const k=v==="透明"?(conf?"白":"綠"):v,h=$("bgc").value;
+  const M={"綠":["solid pure chroma-key green (#00FF00)","純綠色背景（#00FF00）"],"白":["solid pure white (#FFFFFF)","純白色背景（#FFFFFF）"],"自訂":[`solid flat color ${h}`,`純色背景（${h}）`]};
+  return{v,k,conf,e:M[k][0],z:M[k][1]};
+}
+function build(one,idx){
+  const en=$("lang").value==="en",s=ST[$("style").value],t=TN[$("tone").value],B=bgInfo(),cr=crInfo(),P=[];
+  const q=c=>c?`「${c}」`:(en?"(leave this cell empty)":"（此格留空）");
+  const list=cells.map((c,i)=>`${i+1}. ${q(c)}`).join("\n");
+  if(en){
+    P.push(one?"Create ONE single LINE-style chat sticker image (one design, centered, not a grid) of Traditional Chinese text.":"Create ONE single image: a 4x4 sticker sheet (4 columns x 4 rows = 16 equal-size cells) of LINE-style chat sticker text designs in Traditional Chinese.");
+    P.push(`STYLE LOCK${one?"":" (identical in all 16 cells)"}: ${s[1]}. Keep the same lettering construction, color palette, outline thickness and rendering ${one?"as the rest of the sticker set":"in every cell; only the words and expressions change"}.`);
+    if(cr)P.push(`ANTHROPOMORPHIC: the strokes of every character are built from the body of ${cr.e}, so the lettering itself is the creature, not a creature standing beside the text. Vary expressions and poses.`);
+    if(t[0])P.push(`MOOD: ${t[0]}.`);
+    P.push(`BACKGROUND: ${B.e}, one flat color, no gradients, textures or shadows on the background.`);
+    if(!one)P.push("GRID: exactly 16 equal cells in 4 columns x 4 rows, clear margins and gaps between cells, each design fully inside its cell and never crossing cell edges, centered, no visible grid lines or numbers.");
+    P.push(one?`TEXT: ${q(cells[idx])}`:`TEXT (row by row, left to right, copy each exactly):\n${list}`);
+    P.push("TEXT RULES: Every Chinese character must be exactly as written in Traditional Chinese: do not change, omit, add, convert to Simplified Chinese, or misspell any character. Non-Chinese text (such as English letters) is copied as written. Text has a clear outline or stroke and high contrast against the background. Text must never be covered by characters, hands, props or decorations; decorations stay around the text only.");
+  }else{
+    P.push(one?"請生成一張單一的 LINE 風格聊天貼圖（單一設計、置中、不是格狀），內容為繁體中文文字。":"請生成一張圖片：4x4 貼圖總表（4 欄 x 4 列，共 16 個等大格子），內容為 LINE 風格的繁體中文文字貼圖設計。");
+    P.push(`風格鎖定${one?"":"（16 格完全一致）"}：${s[2]}。${one?"字體構造、配色、描邊粗細與質感須與同組貼圖一致。":"每一格的字體構造、配色、描邊粗細與質感都相同，只有文字與表情不同。"}`);
+    if(cr)P.push(`生物擬人化：每個字的筆畫由${cr.z}的身體構成，文字本身就是生物，而不是生物站在文字旁邊。表情與姿勢可依格子變化。`);
+    if(t[1])P.push(`語氣氛圍：${t[1]}。`);
+    P.push(`背景：${B.z}，單一平塗顏色，背景不要有漸層、紋理或陰影。`);
+    if(!one)P.push("格線：共 16 個等大格子（4 欄 x 4 列），格與格之間留白，每個設計完整在格內、不跨越格子邊界、置中，不要出現格線或編號。");
+    P.push(one?`文字：${q(cells[idx])}`:`文字內容（由左至右、由上至下，逐字照抄）：\n${list}`);
+    P.push("文字規則：所有中文字必須完全依照所寫的繁體中文呈現，不可改字、漏字、加字、變成簡體中文或產生錯別字；非中文文字（例如英文字母）照原樣呈現。文字要有清楚的外框或描邊，並與背景形成高對比。文字不可被人物、手、道具或裝飾遮住，裝飾只能放在文字周圍。");
+  }
+  return P.join("\n\n");
+}
+function render(){
+  const B=bgInfo(),w=[],c=crInfo(),empty=cells.filter(x=>!x.trim()).length;
+  $("out").value=build(false);
+  $("out2").value=build(true,+$("rc").value);
+  if(empty)w.push(`有 ${empty} 格尚未填寫，提示詞會要求該格留空。`);
+  if(c&&c.empty)w.push("已選自訂生物，但還沒輸入生物名稱。");
+  if(B.v==="綠"&&B.conf)w.push("此風格或生物含綠色，純綠背景會很難去背，建議改用純白或其他底色。");
+  if(B.v==="透明")w.push(`繪圖 AI 通常無法輸出透明背景，已改用${B.k==="綠"?"純綠":"純白"}背景，請自行去背。`);
+  $("warn").textContent=w.join(" ");
+}
+$("tone").onchange=()=>{
+  const np=TN[$("tone").value][2];
+  const edited=cells.some((c,i)=>c!==preset[i]);
+  const keep=edited&&confirm("部分格子已經修改。\n按「確定」：保留已修改的格子，只更新沒改過的格子。\n按「取消」：全部換成新語氣的短語。");
+  cells=cells.map((c,i)=>keep&&c!==preset[i]?c:np[i]);
+  preset=np.slice();grid();render();
+};
+$("load").onclick=()=>{preset=TN[$("tone").value][2].slice();cells=preset.slice();grid();render()};
+$("rnd").onclick=()=>{$("style").value=Math.floor(Math.random()*ST.length);render()};
+$("ap").onchange=()=>{$("apbox").style.display=$("ap").checked?"":"none";render()};
+$("cr").onchange=()=>{$("crcw").style.display=$("cr").value==="自訂"?"":"none";render()};
+["style","crc","bgc","lang","rc"].forEach(id=>$(id).addEventListener("input",render));
+document.querySelectorAll("input[name=bg]").forEach(r=>r.onchange=render);
+document.querySelectorAll("[data-cp]").forEach(b=>b.onclick=()=>{
+  const t=$(b.dataset.cp),o=b.textContent;t.select();
+  const ok=()=>{b.textContent="已複製";setTimeout(()=>b.textContent=o,1300)};
+  (navigator.clipboard?navigator.clipboard.writeText(t.value):Promise.reject()).then(ok).catch(()=>{document.execCommand("copy");ok()});
+});
+grid();render();
+</script>
+</body>
+</html>
